@@ -17,6 +17,11 @@ import {
   getCapabilitySummary,
   type PlannedEndpoint,
 } from "../shared/capabilities";
+import {
+  createPipelineRun,
+  getPipelineRun,
+  listPipelineRuns,
+} from "./pipelineRunStore";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   initializeData();
@@ -34,19 +39,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return unique.join("; ");
   }
 
-  function notImplemented(
+  function capabilityStatusById(): Map<string, string> {
+    return new Map(FULL_APP_CAPABILITIES.map((c) => [c.id, c.status]));
+  }
+
+  function resolveBlockingCapabilities(required: string[]): string[] {
+    const byId = capabilityStatusById();
+    return required.filter((id) => byId.get(id) !== "implemented");
+  }
+
+  function getEndpoint(path: string): PlannedEndpoint {
+    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === path);
+    if (!endpoint) {
+      throw new Error(`Missing planned endpoint definition for path: ${path}`);
+    }
+    return endpoint;
+  }
+
+  function createPlannedRun(
+    req: { body?: unknown; headers: Record<string, unknown> },
+    endpoint: PlannedEndpoint,
+  ) {
+    const requestedBy =
+      String(req.headers["x-user-email"] || req.headers["x-user-id"] || "api").trim() || "api";
+    const blockingCapabilities = resolveBlockingCapabilities(endpoint.requiredCapabilities);
+
+    return createPipelineRun({
+      operation: endpoint.operation as any,
+      requestPayload: req.body || {},
+      requestedBy,
+      requiredCapabilities: endpoint.requiredCapabilities,
+      blockingCapabilities,
+    });
+  }
+
+  function respondPlannedRun(
     res: Response,
     endpoint: PlannedEndpoint,
-    detail: string,
+    run: ReturnType<typeof createPipelineRun>,
   ) {
-    return res.status(501).json({
-      success: false,
-      status: "not_implemented",
+    const blocked = run.status === "blocked_not_implemented";
+    return res.status(blocked ? 501 : 202).json({
+      success: !blocked,
+      status: run.status,
       operation: endpoint.operation,
       method: endpoint.method,
       path: endpoint.path,
       requiredCapabilities: endpoint.requiredCapabilities,
-      message: detail,
+      run,
+      message: blocked
+        ? "Endpoint contract exists, but required capabilities are not implemented yet."
+        : "Run accepted and queued.",
     });
   }
 
@@ -235,60 +278,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(feedbackStore);
   });
 
-  // Planned full-pipeline endpoints (contract stubs).
-  app.post("/api/pipeline/citeline/pull", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/citeline/pull")!;
-    return notImplemented(res, endpoint, "Citeline pull service is not implemented in this portal repo yet.");
+  // Planned full-pipeline endpoints (run-aware stubs).
+  app.post("/api/pipeline/citeline/pull", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/citeline/pull");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/daily-diff", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/daily-diff")!;
-    return notImplemented(res, endpoint, "Daily diff service is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/daily-diff", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/daily-diff");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/enrich", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/enrich")!;
-    return notImplemented(res, endpoint, "External enrichment service is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/enrich", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/enrich");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/classify", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/classify")!;
-    return notImplemented(res, endpoint, "Classification service is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/classify", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/classify");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/qa", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/qa")!;
-    return notImplemented(res, endpoint, "QA validation service is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/qa", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/qa");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/merge", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/merge")!;
-    return notImplemented(res, endpoint, "Incremental merge service is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/merge", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/merge");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/export", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/export")!;
-    return notImplemented(res, endpoint, "Export service is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/export", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/export");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.post("/api/pipeline/run/full", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/run/full")!;
-    return notImplemented(res, endpoint, "End-to-end orchestration is not implemented in this portal repo yet.");
+  app.post("/api/pipeline/run/full", (req, res) => {
+    const endpoint = getEndpoint("/api/pipeline/run/full");
+    const run = createPlannedRun(req, endpoint);
+    return respondPlannedRun(res, endpoint, run);
   });
 
-  app.get("/api/pipeline/runs", (_req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/runs")!;
-    return notImplemented(res, endpoint, "Run history service is not implemented in this portal repo yet.");
+  app.get("/api/pipeline/runs", (req, res) => {
+    const limit = Number(req.query.limit || 100);
+    const runs = listPipelineRuns(Number.isFinite(limit) ? limit : 100);
+    res.json({
+      count: runs.length,
+      runs,
+    });
   });
 
   app.get("/api/pipeline/run/:runId", (req, res) => {
-    const endpoint = FULL_APP_PIPELINE_ENDPOINTS.find((e) => e.path === "/api/pipeline/run/:runId")!;
-    const runId = req.params.runId;
-    return notImplemented(
-      res,
-      endpoint,
-      `Run detail service is not implemented in this portal repo yet (requested runId=${runId}).`,
-    );
+    const run = getPipelineRun(req.params.runId);
+    if (!run) {
+      return res.status(404).json({
+        success: false,
+        message: `Run not found: ${req.params.runId}`,
+      });
+    }
+
+    return res.json({
+      success: true,
+      run,
+    });
   });
 
   const httpServer = createServer(app);

@@ -4,12 +4,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import DrugPortal from "@/pages/DrugPortal";
+import SystemPlanner from "@/pages/SystemPlanner";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={DrugPortal} />
+      <Route path="/system" component={SystemPlanner} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,0 +1,109 @@
+openapi: 3.0.3
+info:
+  title: Drug Portal Full App Contract
+  version: 0.1.0
+servers:
+  - url: /
+paths:
+  /api/system/capabilities:
+    get:
+      summary: Capability matrix
+      responses:
+        '200':
+          description: Capability summary and entries
+  /api/system/full-app-endpoints:
+    get:
+      summary: Planned endpoint catalog
+      responses:
+        '200':
+          description: Planned endpoints and dependency metadata
+  /api/system/roadmap:
+    get:
+      summary: Phased build roadmap
+      responses:
+        '200':
+          description: Implementation phases
+  /api/pipeline/citeline/pull:
+    post:
+      summary: Start Citeline pull run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/daily-diff:
+    post:
+      summary: Start daily diff run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/enrich:
+    post:
+      summary: Start enrichment run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/classify:
+    post:
+      summary: Start classification run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/qa:
+    post:
+      summary: Start QA validation run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/merge:
+    post:
+      summary: Start incremental merge run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/export:
+    post:
+      summary: Start export run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/run/full:
+    post:
+      summary: Start full end-to-end run
+      responses:
+        '202':
+          description: Accepted
+        '501':
+          description: Blocked by missing capability
+  /api/pipeline/runs:
+    get:
+      summary: List pipeline runs
+      responses:
+        '200':
+          description: Runs list
+  /api/pipeline/run/{runId}:
+    get:
+      summary: Get pipeline run details
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run detail
+        '404':
+          description: Run not found

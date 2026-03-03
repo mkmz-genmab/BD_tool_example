@@ -122,3 +122,19 @@ Planned pipeline endpoints are present as stubs (`501 Not Implemented`) so front
 - `POST /api/pipeline/run/full`
 - `GET /api/pipeline/runs`
 - `GET /api/pipeline/run/:runId`
+
+## New Handoff Assets Added
+
+To make implementation of the full tool unambiguous for collaborators:
+
+- Capability model: `shared/capabilities.ts`
+- Pipeline run contracts: `shared/pipeline.ts`
+- In-memory run tracking stub: `server/pipelineRunStore.ts`
+- System planner page: `client/src/pages/SystemPlanner.tsx` (`/system`)
+- Full app gap analysis: `docs/FULL_APP_GAP_ANALYSIS.md`
+- API contract guide: `docs/FULL_APP_API_CONTRACT.md`
+- excel_v2 mapping guide: `docs/COMPONENT_MAPPING_FROM_EXCEL_V2.md`
+- Build checklist: `docs/COLLEAGUE_IMPLEMENTATION_CHECKLIST.md`
+- OpenAPI draft: `openapi.full-app.yaml`
+
+Pipeline endpoints now create trackable run records and return explicit blockers when required capabilities are missing.
