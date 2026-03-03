@@ -51,7 +51,7 @@ export default function SystemPlanner() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Full App Build Planner</h1>
             <p className="text-sm text-slate-600">
-              Capability matrix + planned pipeline contracts for colleague handoff.
+              Capability matrix + live pipeline execution status for colleague handoff.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -115,7 +115,7 @@ export default function SystemPlanner() {
         </div>
 
         <div className="rounded border bg-white">
-          <div className="border-b p-3 font-semibold">Pipeline Run Stubs</div>
+          <div className="border-b p-3 font-semibold">Pipeline Runs</div>
           <div className="max-h-[280px] overflow-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-100 text-left">

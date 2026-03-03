@@ -1,5 +1,6 @@
-import type { Express, Response } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
+import type { PipelineOperation } from "../shared/pipeline";
 import {
   initializeData,
   getLoadedDrugData,
@@ -19,9 +20,15 @@ import {
 } from "../shared/capabilities";
 import {
   createPipelineRun,
+  appendPipelineRunEvent,
   getPipelineRun,
+  getPipelineRunStorePath,
   listPipelineRuns,
+  setPipelineRunStatus,
 } from "./pipelineRunStore";
+import { executePipelineOperation } from "./pipelineExecutor";
+import { pipelineJobQueue } from "./pipelineJobQueue";
+import { getPipelineAuthSummary, requirePipelineRole } from "./pipelineAuth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   initializeData();
@@ -45,7 +52,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   function resolveBlockingCapabilities(required: string[]): string[] {
     const byId = capabilityStatusById();
-    return required.filter((id) => byId.get(id) !== "implemented");
+    return required.filter((id) => {
+      const status = byId.get(id);
+      return status === "missing";
+    });
   }
 
   function getEndpoint(path: string): PlannedEndpoint {
@@ -56,16 +66,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return endpoint;
   }
 
-  function createPlannedRun(
-    req: { body?: unknown; headers: Record<string, unknown> },
-    endpoint: PlannedEndpoint,
-  ) {
+  function createPipelineRunForEndpoint(req: Request, endpoint: PlannedEndpoint) {
     const requestedBy =
-      String(req.headers["x-user-email"] || req.headers["x-user-id"] || "api").trim() || "api";
+      String(
+        req.headers["x-user-email"] ||
+          req.headers["x-user-id"] ||
+          req.pipelineAuth?.role ||
+          "api",
+      ).trim() || "api";
     const blockingCapabilities = resolveBlockingCapabilities(endpoint.requiredCapabilities);
 
     return createPipelineRun({
-      operation: endpoint.operation as any,
+      operation: endpoint.operation as PipelineOperation,
       requestPayload: req.body || {},
       requestedBy,
       requiredCapabilities: endpoint.requiredCapabilities,
@@ -73,7 +85,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  function respondPlannedRun(
+  function queuePipelineRun(
+    run: ReturnType<typeof createPipelineRun>,
+    endpoint: PlannedEndpoint,
+  ): void {
+    if (run.status === "blocked_not_implemented") return;
+    pipelineJobQueue.enqueue({
+      runId: run.runId,
+      label: endpoint.operation,
+      execute: async () => {
+        setPipelineRunStatus(run.runId, "running", `Running operation: ${endpoint.operation}`);
+        try {
+          await executePipelineOperation(run.runId, run.operation, run.requestPayload);
+          setPipelineRunStatus(run.runId, "completed", "Pipeline operation completed.");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendPipelineRunEvent(run.runId, {
+            level: "error",
+            message,
+          });
+          setPipelineRunStatus(run.runId, "failed", "Pipeline operation failed.", message);
+        }
+      },
+    });
+  }
+
+  function respondPipelineRun(
     res: Response,
     endpoint: PlannedEndpoint,
     run: ReturnType<typeof createPipelineRun>,
@@ -88,7 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       requiredCapabilities: endpoint.requiredCapabilities,
       run,
       message: blocked
-        ? "Endpoint contract exists, but required capabilities are not implemented yet."
+        ? "Run blocked because required capabilities are still marked missing."
         : "Run accepted and queued.",
     });
   }
@@ -98,6 +135,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({
       summary,
       capabilities: FULL_APP_CAPABILITIES,
+      runStorePath: getPipelineRunStorePath(),
+      auth: getPipelineAuthSummary(),
+      queue: pipelineJobQueue.snapshot(),
     });
   });
 
@@ -278,65 +318,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(feedbackStore);
   });
 
-  // Planned full-pipeline endpoints (run-aware stubs).
-  app.post("/api/pipeline/citeline/pull", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/citeline/pull");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
+  function registerPipelinePost(path: string): void {
+    app.post(path, requirePipelineRole("operator"), (req, res) => {
+      const endpoint = getEndpoint(path);
+      const run = createPipelineRunForEndpoint(req, endpoint);
+      queuePipelineRun(run, endpoint);
+      return respondPipelineRun(res, endpoint, run);
+    });
+  }
+
+  registerPipelinePost("/api/pipeline/citeline/pull");
+  registerPipelinePost("/api/pipeline/daily-diff");
+  registerPipelinePost("/api/pipeline/enrich");
+  registerPipelinePost("/api/pipeline/classify");
+  registerPipelinePost("/api/pipeline/qa");
+  registerPipelinePost("/api/pipeline/merge");
+  registerPipelinePost("/api/pipeline/export");
+  registerPipelinePost("/api/pipeline/run/full");
+
+  app.get("/api/pipeline/queue", requirePipelineRole("viewer"), (_req, res) => {
+    res.json(pipelineJobQueue.snapshot());
   });
 
-  app.post("/api/pipeline/daily-diff", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/daily-diff");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.post("/api/pipeline/enrich", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/enrich");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.post("/api/pipeline/classify", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/classify");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.post("/api/pipeline/qa", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/qa");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.post("/api/pipeline/merge", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/merge");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.post("/api/pipeline/export", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/export");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.post("/api/pipeline/run/full", (req, res) => {
-    const endpoint = getEndpoint("/api/pipeline/run/full");
-    const run = createPlannedRun(req, endpoint);
-    return respondPlannedRun(res, endpoint, run);
-  });
-
-  app.get("/api/pipeline/runs", (req, res) => {
+  app.get("/api/pipeline/runs", requirePipelineRole("viewer"), (req, res) => {
     const limit = Number(req.query.limit || 100);
     const runs = listPipelineRuns(Number.isFinite(limit) ? limit : 100);
     res.json({
       count: runs.length,
       runs,
+      queue: pipelineJobQueue.snapshot(),
+      runStorePath: getPipelineRunStorePath(),
     });
   });
 
-  app.get("/api/pipeline/run/:runId", (req, res) => {
+  app.get("/api/pipeline/run/:runId", requirePipelineRole("viewer"), (req, res) => {
     const run = getPipelineRun(req.params.runId);
     if (!run) {
       return res.status(404).json({

@@ -21,17 +21,42 @@ export interface PipelineRunEvent {
   message: string;
 }
 
+export interface PipelineCommandRecord {
+  label: string;
+  cmd: string;
+  args: string[];
+  cwd: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  exitCode: number;
+  timedOut: boolean;
+}
+
+export interface PipelineArtifact {
+  kind: string;
+  label: string;
+  path: string;
+  exists: boolean;
+}
+
 export interface PipelineRun {
   runId: string;
   operation: PipelineOperation;
   status: PipelineRunStatus;
   createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
   updatedAt: string;
+  durationMs?: number;
   requestedBy: string;
   requestPayload: unknown;
   requiredCapabilities: string[];
   blockingCapabilities: string[];
+  error?: string;
   events: PipelineRunEvent[];
+  commands: PipelineCommandRecord[];
+  artifacts: PipelineArtifact[];
 }
 
 export interface PipelineRunCreateInput {

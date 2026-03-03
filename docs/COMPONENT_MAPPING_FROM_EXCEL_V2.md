@@ -70,7 +70,7 @@ This map helps implement the full pipeline in this app by reusing proven logic f
 ## Run Tracking + Queue
 
 - Existing in app:
-  - `server/pipelineRunStore.ts` (in-memory stub)
+  - `server/pipelineRunStore.ts` (persistent JSON run store)
 - To build next:
   - persistent DB table for runs + artifacts
   - worker queue executor (BullMQ/Temporal/Cloud Tasks)

@@ -1,116 +1,109 @@
 # Drug Portal App
 
-Full-stack TypeScript app (Express + React/Vite) for browsing and reviewing curated drug records.
+Full-stack TypeScript app (Express + React/Vite) for running the drug data pipeline and serving curated output to the frontend.
 
-## What Was Cleaned
+## Repo Status
 
-- Removed Replit-generated asset clutter from `attached_assets/`.
-- Normalized runtime data files into stable names under `data/`.
-- Replaced hardcoded timestamped paths with env-driven paths.
-- Added `.env.example` and improved `.gitignore`.
-- Made API behavior explicit for sampling/demo flags.
+- Yes, this repo has a README.
+- Yes, it is cleaned and git-ready for handoff.
+- Pipeline endpoints are implemented as async queued jobs (not stubs).
 
-## Project Structure
+## End-to-End Process
 
-- `server/` Express API
-- `client/` React app (Vite)
-- `shared/` shared types/schema
-- `data/` runtime data files used by the API
+This is the full process from raw pull to frontend display.
 
-## Required Data Files
+1. **Daily Citeline pull**
+- Pull latest rows from Citeline API and export to ideal upload format.
+- Endpoint: `POST /api/pipeline/citeline/pull`
 
-By default, the app reads:
+2. **Daily diff vs previous master**
+- Compare today upload with previous day master.
+- Mark rows as `NEW`, `UPDATED`, `UNCHANGED`, or `REMOVED`.
+- Carry forward prior curated/enriched values for unchanged rows.
+- Endpoint: `POST /api/pipeline/daily-diff`
 
-- `data/target_synonyms.csv`
-- `data/drug_data.xlsx`
-- `data/preferred_terms.xlsx`
-- `data/crosstalk_ids.csv`
-- `data/summary_deltas.csv`
+3. **Enrichment for rows that changed**
+- Enrich `NEW`/`UPDATED` rows with:
+  - conference abstracts
+  - company website evidence
+  - proposal/company assets data
+- Endpoint: `POST /api/pipeline/enrich`
 
-You can override any path via env vars in `.env`.
+4. **Classification**
+- Run molecule/masking/payload classification for rows that need it.
+- Generate/refresh AI summary fields where applicable.
+- Endpoint: `POST /api/pipeline/classify`
 
-## Local Run
+5. **QA + taxonomy guardrails**
+- Enforce taxonomy validity and AR-specific rule checks.
+- Run narrative audit + readiness reporting.
+- Endpoint: `POST /api/pipeline/qa`
 
-1. Install deps:
+6. **Incremental merge**
+- Merge newly classified subset back into seeded daily master.
+- Preserve unchanged rows and existing trusted values.
+- Endpoint: `POST /api/pipeline/merge`
 
-```bash
-npm install
-```
+7. **Export frontend/demo outputs**
+- Export files consumed downstream (CrossTalk, summary deltas, dictionary outputs).
+- Endpoint: `POST /api/pipeline/export`
 
-2. Create env file:
+8. **Frontend consumption**
+- Frontend reads curated outputs and serves searchable/filtered table UI.
+- Main data API: `GET /api/drugs`
 
-```bash
-cp .env.example .env
-```
+9. **Optional single-command full run**
+- Endpoint: `POST /api/pipeline/run/full`
 
-3. Start dev server:
+## Recommended Cadence
 
-```bash
-npm run dev
-```
+1. **Daily**
+- Citeline pull
+- Diff
+- Enrich changed rows
+- Classify changed rows
+- QA
+- Merge
+- Export
 
-4. Open:
+2. **Weekly (or daily if resources allow)**
+- Refresh trusted company assets cache/source pulls.
+- Revalidate high-impact company website data quality.
 
-`http://localhost:5000`
+3. **Periodic backfill**
+- Re-run selected older rows when taxonomy rules, dictionaries, or enrichment logic change.
 
-## Production Build
+## What You Were Missing
 
-```bash
-npm run build
-npm start
-```
+Your summary was strong. The extra critical pieces are:
 
-## Docker
+1. **QA/taxonomy enforcement**
+- Without this, invalid or inconsistent labels leak into output.
 
-```bash
-docker build -t drug-portal-app .
-docker run --rm -p 5000:5000 drug-portal-app
-```
+2. **Incremental merge behavior**
+- Must preserve trusted unchanged records while only updating changed rows.
 
-## Deployment Notes
+3. **Export layer**
+- Frontend should consume stable exported schema, not ad-hoc intermediate outputs.
 
-- Runtime only needs Node + the `data/` files.
-- Set `PORT` from platform environment.
-- Set `DRUG_SAMPLE_FRACTION=1` for full dataset in shared environments.
-- Keep `INJECT_DEMO_NEW_INFO=false` unless intentionally demoing synthetic badges.
+4. **Run tracking + queueing**
+- Prevents request timeouts and gives auditability for failures/artifacts.
 
-## Git-Ready Checklist
+5. **Data freshness policy**
+- Company/website enrichment needs scheduled refresh to avoid stale or contaminated data.
 
-- Commit source + `data/` example files.
-- Do not commit `.env`.
-- Validate with:
+6. **Provenance and confidence guardrails**
+- Keep source URLs/source types/confidence to avoid junk merges and misassignment.
 
-```bash
-npm run check
-npm run build
-```
+## Pipeline API Surface
 
-## Push To A New Git Repo
-
-```bash
-git init
-git add .
-git commit -m "Initial shareable drug portal app"
-git branch -M main
-git remote add origin <YOUR_REMOTE_URL>
-git push -u origin main
-```
-
-## Full App Handoff (What Still Needs To Be Built)
-
-This repo now includes explicit planning artifacts for production buildout:
-
-- `docs/FULL_APP_GAP_ANALYSIS.md`
-- `docs/FULL_APP_API_CONTRACT.md`
-- `shared/capabilities.ts`
-
-You can inspect capability status via API:
+### System/Planning
 
 - `GET /api/system/capabilities`
 - `GET /api/system/roadmap`
 - `GET /api/system/full-app-endpoints`
 
-Planned pipeline endpoints are present as stubs (`501 Not Implemented`) so frontend/backend teams can align early on contracts:
+### Pipeline
 
 - `POST /api/pipeline/citeline/pull`
 - `POST /api/pipeline/daily-diff`
@@ -122,19 +115,102 @@ Planned pipeline endpoints are present as stubs (`501 Not Implemented`) so front
 - `POST /api/pipeline/run/full`
 - `GET /api/pipeline/runs`
 - `GET /api/pipeline/run/:runId`
+- `GET /api/pipeline/queue`
 
-## New Handoff Assets Added
+Each pipeline POST returns quickly with a `runId` (`202`) and executes in the background queue.
 
-To make implementation of the full tool unambiguous for collaborators:
+## Auth / RBAC
 
-- Capability model: `shared/capabilities.ts`
-- Pipeline run contracts: `shared/pipeline.ts`
-- In-memory run tracking stub: `server/pipelineRunStore.ts`
-- System planner page: `client/src/pages/SystemPlanner.tsx` (`/system`)
-- Full app gap analysis: `docs/FULL_APP_GAP_ANALYSIS.md`
-- API contract guide: `docs/FULL_APP_API_CONTRACT.md`
-- excel_v2 mapping guide: `docs/COMPONENT_MAPPING_FROM_EXCEL_V2.md`
-- Build checklist: `docs/COLLEAGUE_IMPLEMENTATION_CHECKLIST.md`
-- OpenAPI draft: `openapi.full-app.yaml`
+Pipeline endpoints support API-key RBAC.
 
-Pipeline endpoints now create trackable run records and return explicit blockers when required capabilities are missing.
+- Env format: `PIPELINE_API_KEYS=viewerToken:viewer,operatorToken:operator,adminToken:admin`
+- Header: `x-api-key: <token>` or `Authorization: Bearer <token>`
+- If `PIPELINE_API_KEYS` is not set, pipeline auth is open (dev mode).
+
+## Run Tracking
+
+- Run store default: `data/pipeline_runs.json`
+- Override with: `PIPELINE_RUN_STORE_PATH`
+- Captures:
+  - status transitions
+  - step events/log lines
+  - command records (duration, exit code, timeout)
+  - artifact paths
+
+## Project Structure
+
+- `server/` API, queue, run tracking, pipeline adapters
+- `client/` frontend app (Vite)
+- `shared/` shared contracts/types
+- `data/` runtime data files
+- `docs/` handoff and API contract docs
+
+## Required Data Files (Default)
+
+- `data/target_synonyms.csv`
+- `data/drug_data.xlsx`
+- `data/preferred_terms.xlsx`
+- `data/crosstalk_ids.csv`
+- `data/summary_deltas.csv`
+
+## Environment Configuration
+
+Start from `.env.example`.
+
+Important pipeline settings:
+
+- `EXCEL_V2_ROOT`
+- `CITELINE_API_ROOT`
+- `PIPELINE_OUTPUT_ROOT`
+- `PIPELINE_PYTHON_BIN`
+- `PIPELINE_STEP_TIMEOUT_SECONDS`
+- `PIPELINE_QUEUE_CONCURRENCY`
+- `PIPELINE_RUN_STORE_PATH`
+- `PIPELINE_API_KEYS`
+
+## Local Development
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create env file:
+
+```bash
+cp .env.example .env
+```
+
+3. Run app:
+
+```bash
+npm run dev
+```
+
+4. Open:
+
+- `http://localhost:5000`
+- Planner view: `http://localhost:5000/system`
+
+## Build / Validation
+
+```bash
+npm run check
+npm run build
+```
+
+## Docker
+
+```bash
+docker build -t drug-portal-app .
+docker run --rm -p 5000:5000 drug-portal-app
+```
+
+## Handoff Docs
+
+- `docs/FULL_APP_GAP_ANALYSIS.md`
+- `docs/FULL_APP_API_CONTRACT.md`
+- `docs/COMPONENT_MAPPING_FROM_EXCEL_V2.md`
+- `docs/COLLEAGUE_IMPLEMENTATION_CHECKLIST.md`
+- `openapi.full-app.yaml`
