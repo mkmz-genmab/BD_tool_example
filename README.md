@@ -95,3 +95,30 @@ git branch -M main
 git remote add origin <YOUR_REMOTE_URL>
 git push -u origin main
 ```
+
+## Full App Handoff (What Still Needs To Be Built)
+
+This repo now includes explicit planning artifacts for production buildout:
+
+- `docs/FULL_APP_GAP_ANALYSIS.md`
+- `docs/FULL_APP_API_CONTRACT.md`
+- `shared/capabilities.ts`
+
+You can inspect capability status via API:
+
+- `GET /api/system/capabilities`
+- `GET /api/system/roadmap`
+- `GET /api/system/full-app-endpoints`
+
+Planned pipeline endpoints are present as stubs (`501 Not Implemented`) so frontend/backend teams can align early on contracts:
+
+- `POST /api/pipeline/citeline/pull`
+- `POST /api/pipeline/daily-diff`
+- `POST /api/pipeline/enrich`
+- `POST /api/pipeline/classify`
+- `POST /api/pipeline/qa`
+- `POST /api/pipeline/merge`
+- `POST /api/pipeline/export`
+- `POST /api/pipeline/run/full`
+- `GET /api/pipeline/runs`
+- `GET /api/pipeline/run/:runId`
